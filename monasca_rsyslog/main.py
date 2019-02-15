@@ -20,8 +20,8 @@ STDERR_FILE = '/var/log/monasca-rsyslog.stderr'
 # do this as early as possible to be able to debug the usual Python import
 # dependency version hell.
 import sys
-sys.stdout = open(STDOUT_FILE, 'w+')
-sys.stderr = open(STDERR_FILE, 'w+')
+sys.stdout = open(STDOUT_FILE, 'a')
+sys.stderr = open(STDERR_FILE, 'a')
 
 print('Started')
 sys.stdout.flush()
