@@ -40,11 +40,11 @@ def stdin_by_line():
 
 def main():
     client = Client()
-    echo = False
+    echo = True
 
     for line in stdin_by_line():
         if echo:
-            sys.stdout.write(line)
+	    print(line)
             sys.stdout.flush()
         client.post_logs(line)
 

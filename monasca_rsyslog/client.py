@@ -14,7 +14,9 @@
 
 from keystoneauth1 import plugin
 from keystoneauth1 import loading as ks_loading
+from oslo_serialization import jsonutils
 from oslo_config import cfg
+import time
 
 AUTH_CFG_GROUP = 'auth'
 API_CFG_GROUP = 'api'
@@ -34,7 +36,7 @@ cfg.CONF(default_config_files=[DEFAULT_CONFIG])
 class Client(object):
     """Client for interacting with the monasca-log-api."""
     
-    def __init__(self):
+    def __init__(self, interval=10):
         auth_plugin = ks_loading.load_auth_from_conf_options(
             cfg.CONF,
             AUTH_CFG_GROUP
@@ -46,13 +48,22 @@ class Client(object):
             user_agent='rsyslog-monasca'
         )
         self._url = cfg.CONF.api.url
+        self.buffer = {}
+        self.interval = interval
+        self.start_time = time.time()
 
     def post_logs(self, data):
         """Post logs to Monasca which are suitably pre-encoded as JSON."""
-        
-        self._sess.post(
-            '/logs',
-            endpoint_override=self._url,
-            headers={ 'Content-Type': 'application/json' },
-            data=data
-        )
+        for key, value in jsonutils.loads(data).items():
+            self.buffer.setdefault(key, []).extend(value)
+        elapsed_time = time.time() - self.start_time
+        if elapsed_time > self.interval:
+            self._sess.post(
+                '/logs',
+                endpoint_override=self._url,
+                headers={ 'Content-Type': 'application/json' },
+                data=jsonutils.dumps(self.buffer)
+            )
+            print(self.buffer, len(self.buffer.get('logs', [])))
+            self.buffer = {}
+            self.start_time = time.time()
