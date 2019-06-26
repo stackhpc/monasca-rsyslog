@@ -28,7 +28,16 @@ ks_loading.register_session_conf_options(cfg.CONF, AUTH_CFG_GROUP)
 cfg.CONF.register_opts([
     cfg.StrOpt('url',
                default=None,
-               help='Specify URL for the logging API')
+               help='Specify URL for the logging API'),
+    cfg.IntOpt('max_buffer_size',
+               default=10,
+               help='Specify maximum buffer size until triggering a post'),
+    cfg.IntOpt('max_interval',
+               default=10,
+               help='Specify maximum time to wait until triggering a post'),
+    cfg.IntOpt('min_interval',
+               default=8,
+               help='Specify minimum time to wait until triggering a post'),
 ], cfg.OptGroup(name=API_CFG_GROUP, title=API_CFG_GROUP))
 
 cfg.CONF(default_config_files=[DEFAULT_CONFIG])
@@ -36,7 +45,7 @@ cfg.CONF(default_config_files=[DEFAULT_CONFIG])
 class Client(object):
     """Client for interacting with the monasca-log-api."""
     
-    def __init__(self, interval=10):
+    def __init__(self):
         auth_plugin = ks_loading.load_auth_from_conf_options(
             cfg.CONF,
             AUTH_CFG_GROUP
@@ -48,22 +57,27 @@ class Client(object):
             user_agent='rsyslog-monasca'
         )
         self._url = cfg.CONF.api.url
-        self.buffer = {}
-        self.interval = interval
-        self.start_time = time.time()
+        self._max_interval = cfg.CONF.api.max_interval
+        self._min_interval = cfg.CONF.api.min_interval
+        self._max_buffer_size = cfg.CONF.api.max_buffer_size
+        self.log_count, self.log_buffer, self.start_time = 0, {}, time.time()
+        # Allow time for buffer to build before polling rsyslog
+        time.sleep(self._min_interval)
 
     def post_logs(self, data):
         """Post logs to Monasca which are suitably pre-encoded as JSON."""
         for key, value in jsonutils.loads(data).items():
-            self.buffer.setdefault(key, []).extend(value)
-        elapsed_time = time.time() - self.start_time
-        if elapsed_time > self.interval:
+            self.log_buffer.setdefault(key, []).extend(value)
+            self.log_count += len(value)
+        waited_too_long = time.time() - self.start_time > self._max_interval
+        buffer_too_long = self.log_count >= self._max_buffer_size
+        if waited_too_long or buffer_too_long:
             self._sess.post(
                 '/logs',
                 endpoint_override=self._url,
                 headers={ 'Content-Type': 'application/json' },
-                data=jsonutils.dumps(self.buffer)
+                data=jsonutils.dumps(self.log_buffer)
             )
-            print(self.buffer, len(self.buffer.get('logs', [])))
-            self.buffer = {}
-            self.start_time = time.time()
+            print("Posted {} items in the buffer".format(self.log_count))
+            time.sleep(self._min_interval)
+            self.log_count, self.log_buffer, self.start_time = 0, {}, time.time()

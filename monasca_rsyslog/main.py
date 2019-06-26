@@ -30,7 +30,6 @@ from client import Client
 
 def stdin_by_line():
     """Helper for performing line-by-line reads of stdin."""
-    
     while True:
         line = sys.stdin.readline()
         if line:
@@ -44,9 +43,9 @@ def main():
 
     for line in stdin_by_line():
         if echo:
-	    print(line)
-            sys.stdout.flush()
+            print(line)
         client.post_logs(line)
+        sys.stdout.flush()
 
     print('Exiting')
     sys.stdout.flush()
