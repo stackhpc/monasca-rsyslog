@@ -32,12 +32,12 @@ cfg.CONF.register_opts([
     cfg.IntOpt('max_buffer_size',
                default=10,
                help='Specify maximum buffer size until triggering a post'),
-    cfg.IntOpt('max_interval',
-               default=10,
-               help='Specify maximum time to wait until triggering a post'),
-    cfg.IntOpt('min_interval',
-               default=8,
-               help='Specify minimum time to wait until triggering a post'),
+    cfg.IntOpt('proc_interval',
+               default=1,
+               help='Specify the time to allow for processing buffers'),
+    cfg.IntOpt('poll_interval',
+               default=9,
+               help='Specify minimum time to wait between polling rsyslog'),
 ], cfg.OptGroup(name=API_CFG_GROUP, title=API_CFG_GROUP))
 
 cfg.CONF(default_config_files=[DEFAULT_CONFIG])
@@ -57,19 +57,22 @@ class Client(object):
             user_agent='rsyslog-monasca'
         )
         self._url = cfg.CONF.api.url
-        self._max_interval = cfg.CONF.api.max_interval
-        self._min_interval = cfg.CONF.api.min_interval
+        self._proc_interval = cfg.CONF.api.proc_interval
+        self._poll_interval = cfg.CONF.api.poll_interval
         self._max_buffer_size = cfg.CONF.api.max_buffer_size
         self.log_count, self.log_buffer, self.start_time = 0, {}, time.time()
         # Allow time for buffer to build before polling rsyslog
-        time.sleep(self._min_interval)
+        time.sleep(self._poll_interval)
 
     def post_logs(self, data):
         """Post logs to Monasca which are suitably pre-encoded as JSON."""
         for key, value in jsonutils.loads(data).items():
             self.log_buffer.setdefault(key, []).extend(value)
             self.log_count += len(value)
-        waited_too_long = time.time() - self.start_time > self._max_interval
+        waited_too_long = (
+            time.time() - self.start_time >
+            self._proc_interval + self._poll_interval
+        )
         buffer_too_long = self.log_count >= self._max_buffer_size
         if waited_too_long or buffer_too_long:
             self._sess.post(
@@ -79,5 +82,12 @@ class Client(object):
                 data=jsonutils.dumps(self.log_buffer)
             )
             print("Posted {} items in the buffer".format(self.log_count))
-            time.sleep(self._min_interval)
+            # Reset the counter and the buffer
             self.log_count, self.log_buffer, self.start_time = 0, {}, time.time()
+            # Only sleep if the reason for posting is because of timeout.
+            # This ensures that during periods of high volume, the buffer does
+            # not continuously build up due to unnecessary throttle of activity.
+            if buffer_too_long: 
+                self.start_time -= self._poll_interval
+            else:
+                time.sleep(self._poll_interval)
