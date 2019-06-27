@@ -37,7 +37,7 @@ cfg.CONF.register_opts([
                default=1,
                help='Specify the time to allow for processing buffers'),
     cfg.IntOpt('poll_interval',
-               default=9,
+               default=10,
                help='Specify minimum time to wait between polling rsyslog'),
     cfg.BoolOpt('verbose',
                default=False,
@@ -64,6 +64,7 @@ class Client(object):
         self._verbose = cfg.CONF.api.verbose
         self._proc_interval = cfg.CONF.api.proc_interval
         self._poll_interval = cfg.CONF.api.poll_interval
+        self._sleep_interval = self._poll_interval - self._proc_interval
         self._max_buffer_size = cfg.CONF.api.max_buffer_size
         self.log_count, self.log_buffer, self.start_time = 0, {}, time.time()
         # Allow time for buffer to build before polling rsyslog
@@ -71,18 +72,20 @@ class Client(object):
 
     def post_logs(self, data):
         """Post logs to Monasca which are suitably pre-encoded as JSON."""
-        if self._verbose:
-            print(data)
-            sys.stdout.flush()
-        for key, value in jsonutils.loads(data).items():
-            self.log_buffer.setdefault(key, []).extend(value)
-            self.log_count += len(value)
-        waited_too_long = (
-            time.time() - self.start_time >
-            self._proc_interval + self._poll_interval
-        )
+        if data != None:
+            if self._verbose:
+                print(data)
+                sys.stdout.flush()
+            for key, value in jsonutils.loads(data).items():
+                self.log_buffer.setdefault(key, []).extend(value)
+                self.log_count += len(value)
+        else:
+            if self._verbose:
+                print('No input from rsyslog stdin.')
+                sys.stdout.flush()
+        waited_too_long = time.time() - self.start_time > self._poll_interval
         buffer_too_long = self.log_count >= self._max_buffer_size
-        if waited_too_long or buffer_too_long:
+        if (waited_too_long or buffer_too_long) and self.log_count > 0:
             self._sess.post(
                 '/logs',
                 endpoint_override=self._url,
@@ -101,6 +104,6 @@ class Client(object):
             # This ensures that during periods of high volume, the buffer does
             # not continuously build up due to unnecessary throttle of activity.
             if buffer_too_long: 
-                self.start_time -= self._poll_interval
+                self.start_time -= self._sleep_interval
             else:
-                time.sleep(self._poll_interval)
+                time.sleep(self._sleep_interval)

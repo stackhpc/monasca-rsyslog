@@ -27,15 +27,22 @@ print('Started')
 sys.stdout.flush()
 
 from client import Client
+from select import select
 
-def stdin_by_line():
+def stdin_by_line(stdin_timeout=1):
     """Helper for performing line-by-line reads of stdin."""
     while True:
-        line = sys.stdin.readline()
-        if line:
-            yield line
+        buffer_is_not_empty, _, _ = select([sys.stdin], [], [], stdin_timeout)
+        if buffer_is_not_empty:
+            line = sys.stdin.readline()
+            if line:
+                yield line
+            else:
+                return
         else:
-            return
+            # Waiting for stdin buffer timed out, yeild in case there are
+            # things waiting to be flushed but no input for timeout duration.
+            yield None
 
 def main():
     client = Client()
