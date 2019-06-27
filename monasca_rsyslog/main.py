@@ -26,10 +26,11 @@ sys.stderr = open(STDERR_FILE, 'a')
 from client import Client
 from select import select
 
-def stdin_by_line(proc_time):
-    """Helper for performing line-by-line reads of stdin."""
+def stdin_by_line(poll_interval):
+    """ Helper for performing line-by-line reads of stdin. """
+
     while True:
-        buffer_is_not_empty, _, _ = select([sys.stdin], [], [], proc_time)
+        buffer_is_not_empty, _, _ = select([sys.stdin], [], [], poll_interval)
         if buffer_is_not_empty:
             line = sys.stdin.readline()
             if line:
