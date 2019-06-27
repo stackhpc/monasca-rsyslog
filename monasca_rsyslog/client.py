@@ -127,6 +127,9 @@ class Client(object):
                 # not continuously build up due to undesired naps.
                 if not buffer_too_long: 
                     # Sleep for max interval allowing for processing time
+                    if self._verbose:
+                        print("Taking a {} second nap.".format(self._max_poll_interval))
+                        sys.stdout.flush()
                     time.sleep(self._max_poll_interval)
                 # Reset the variables
                 log_count, log_buffer, start_time = 0, {}, time.time()
