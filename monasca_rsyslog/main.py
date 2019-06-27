@@ -23,16 +23,13 @@ import sys
 sys.stdout = open(STDOUT_FILE, 'a')
 sys.stderr = open(STDERR_FILE, 'a')
 
-print('Started')
-sys.stdout.flush()
-
 from client import Client
 from select import select
 
-def stdin_by_line(stdin_timeout=1):
+def stdin_by_line(proc_interval):
     """Helper for performing line-by-line reads of stdin."""
     while True:
-        buffer_is_not_empty, _, _ = select([sys.stdin], [], [], stdin_timeout)
+        buffer_is_not_empty, _, _ = select([sys.stdin], [], [], proc_interval)
         if buffer_is_not_empty:
             line = sys.stdin.readline()
             if line:
@@ -45,10 +42,12 @@ def stdin_by_line(stdin_timeout=1):
             yield None
 
 def main():
+    print('Started')
+    sys.stdout.flush()
+
     client = Client()
 
-    for line in stdin_by_line():
-        client.post_logs(line)
+    client.post_logs(stdin_fn=stdin_by_line)
 
     print('Exiting')
     sys.stdout.flush()

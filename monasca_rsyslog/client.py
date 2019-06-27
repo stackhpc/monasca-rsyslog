@@ -32,14 +32,11 @@ cfg.CONF.register_opts([
                default=None,
                help='Specify URL for the logging API'),
     cfg.IntOpt('max_buffer_size',
-               default=10,
+               default=100,
                help='Specify maximum buffer size until triggering a post'),
-    cfg.IntOpt('proc_interval',
-               default=1,
-               help='Specify the time to allow for processing buffers'),
-    cfg.IntOpt('poll_interval',
+    cfg.IntOpt('max_poll_interval',
                default=10,
-               help='Specify minimum time to wait between polling rsyslog'),
+               help='Specify maximum time to wait between triggering a post'),
     cfg.BoolOpt('verbose',
                default=False,
                help='Specify whether to print output'),
@@ -63,55 +60,57 @@ class Client(object):
         )
         self._url = cfg.CONF.api.url
         self._verbose = cfg.CONF.api.verbose
-        self._proc_interval = cfg.CONF.api.proc_interval
-        self._poll_interval = cfg.CONF.api.poll_interval
-        self._sleep_interval = self._poll_interval - self._proc_interval
+        self._max_poll_interval = cfg.CONF.api.max_poll_interval
         self._max_buffer_size = cfg.CONF.api.max_buffer_size
-        self.log_count, self.log_buffer, self.start_time = 0, {}, time.time()
-        # Allow time for buffer to build before polling rsyslog
-        time.sleep(self._poll_interval)
 
-    def post_logs(self, data):
+    def post_logs(self, stdin_fn, proc_interval=1):
         """Post logs to Monasca which are suitably pre-encoded as JSON."""
-        if data != None:
-            if self._verbose:
-                print(data)
-                sys.stdout.flush()
-            for key, value in jsonutils.loads(data).items():
-                self.log_buffer.setdefault(key, []).extend(value)
-                self.log_count += len(value)
-        else:
-            if self._verbose:
-                print('No input from rsyslog stdin.')
-                sys.stdout.flush()
-        waited_too_long = time.time() - self.start_time > self._poll_interval
-        buffer_too_long = self.log_count >= self._max_buffer_size
-        if (waited_too_long or buffer_too_long) and self.log_count > 0:
-            if self._verbose:
-                print(
-                    "log_count: {}, waited_too_long: {}, buffer_too_long: {}"
-                    .format(self.log_count, waited_too_long, buffer_too_long)
-                )
-                sys.stdout.flush()
-            while True:
-                try:
-                    self._sess.post(
-                        '/logs',
-                        endpoint_override=self._url,
-                        headers={ 'Content-Type': 'application/json' },
-                        data=jsonutils.dumps(self.log_buffer)
-                    )
-                    break
-                except ConnectionFailure:
-                    print("Connection failure, trying again.")
+
+        # Allow time for buffer to build before polling rsyslog
+        time.sleep(proc_interval)
+
+        # Reset the variables
+        log_count, log_buffer, start_time = 0, {}, time.time()
+
+        # Iterate through the stdin function
+        for data in stdin_fn(proc_interval=proc_interval):
+            # If the input is not empty, combine with the existing log buffer
+            if data != None:
+                if self._verbose:
+                    print(data)
                     sys.stdout.flush()
-                    time.sleep(1)
-            # Reset the counter and the buffer
-            self.log_count, self.log_buffer, self.start_time = 0, {}, time.time()
-            # Only sleep if the reason for posting is because of timeout.
-            # This ensures that during periods of high volume, the buffer does
-            # not continuously build up due to unnecessary throttle of activity.
-            if buffer_too_long: 
-                self.start_time -= self._sleep_interval
+                for key, value in jsonutils.loads(data).items():
+                    log_buffer.setdefault(key, []).extend(value)
+                    log_count += len(value)
             else:
-                time.sleep(self._sleep_interval)
+                if self._verbose:
+                    print('No input from stdin function.')
+                    sys.stdout.flush()
+            elapsed_time = time.time() - self.start_time
+            waited_too_long = elapsed_time > proc_interval
+            buffer_too_long = log_count >= self._max_buffer_size
+            if (waited_too_long or buffer_too_long) and log_count > 0:
+                keys = ["log_count", "elapsed_time", "waited_too_long", "buffer_too_long"]
+                print('\t'.join(["{}: {}".format(k, locals()[k]) for k in keys]))
+                sys.stdout.flush()
+                while True:
+                    try:
+                        self._sess.post(
+                            '/logs',
+                            endpoint_override=self._url,
+                            headers={ 'Content-Type': 'application/json' },
+                            data=jsonutils.dumps(log_buffer)
+                        )
+                        break
+                    except ConnectionFailure:
+                        print("Connection failure, trying again.")
+                        sys.stdout.flush()
+                        time.sleep(1)
+                # Do not sleep if we wrrived here because of a full buffer.
+                # This ensures that during periods of high volume, the buffer does
+                # not continuously build up due to unnecessary throttling of activity.
+                if not buffer_too_long: 
+                    # Sleep for max interval allowing for processing time
+                    time.sleep(self._max_poll_interval)
+                # Reset the variables
+                log_count, log_buffer, start_time = 0, {}, time.time()
