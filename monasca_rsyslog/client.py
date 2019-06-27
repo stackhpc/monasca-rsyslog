@@ -17,6 +17,7 @@ from keystoneauth1 import loading as ks_loading
 from oslo_serialization import jsonutils
 from oslo_config import cfg
 import time
+import sys
 
 AUTH_CFG_GROUP = 'auth'
 API_CFG_GROUP = 'api'
@@ -38,6 +39,9 @@ cfg.CONF.register_opts([
     cfg.IntOpt('poll_interval',
                default=9,
                help='Specify minimum time to wait between polling rsyslog'),
+    cfg.BoolOpt('verbose',
+               default=False,
+               help='Specify whether to print output'),
 ], cfg.OptGroup(name=API_CFG_GROUP, title=API_CFG_GROUP))
 
 cfg.CONF(default_config_files=[DEFAULT_CONFIG])
@@ -57,6 +61,7 @@ class Client(object):
             user_agent='rsyslog-monasca'
         )
         self._url = cfg.CONF.api.url
+        self._verbose = cfg.CONF.api.verbose
         self._proc_interval = cfg.CONF.api.proc_interval
         self._poll_interval = cfg.CONF.api.poll_interval
         self._max_buffer_size = cfg.CONF.api.max_buffer_size
@@ -66,6 +71,9 @@ class Client(object):
 
     def post_logs(self, data):
         """Post logs to Monasca which are suitably pre-encoded as JSON."""
+        if self._verbose:
+            print(data)
+            sys.stdout.flush()
         for key, value in jsonutils.loads(data).items():
             self.log_buffer.setdefault(key, []).extend(value)
             self.log_count += len(value)
@@ -81,7 +89,12 @@ class Client(object):
                 headers={ 'Content-Type': 'application/json' },
                 data=jsonutils.dumps(self.log_buffer)
             )
-            print("Posted {} items in the buffer".format(self.log_count))
+            if self._verbose:
+                print(
+                    "log_count: {}, waited_too_long: {}, buffer_too_long: {}"
+                    .format(self.log_count, waited_too_long, buffer_too_long)
+                )
+                sys.stdout.flush()
             # Reset the counter and the buffer
             self.log_count, self.log_buffer, self.start_time = 0, {}, time.time()
             # Only sleep if the reason for posting is because of timeout.

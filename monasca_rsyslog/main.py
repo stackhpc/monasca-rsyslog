@@ -39,13 +39,9 @@ def stdin_by_line():
 
 def main():
     client = Client()
-    echo = True
 
     for line in stdin_by_line():
-        if echo:
-            print(line)
         client.post_logs(line)
-        sys.stdout.flush()
 
     print('Exiting')
     sys.stdout.flush()
