@@ -32,6 +32,7 @@ cfg.CONF.register_opts([
                help='Specify URL for the logging API'),
     cfg.IntOpt('max_buffer_size',
                default=100,
+               min=1,
                help='Specify maximum buffer size until triggering a post'),
     cfg.IntOpt('max_poll_interval',
                default=10,
@@ -115,7 +116,7 @@ class Client(object):
             log_count += self.combine_logs(data, log_buffer)
             elapsed_time = time.time() - start_time
             waited_too_long = elapsed_time > proc_time
-            buffer_too_long = log_count >= self._max_buffer_size
+            buffer_too_long = log_count > self._max_buffer_size
             if (waited_too_long or buffer_too_long) and log_count > 0:
                 info_keys = ["log_count", "elapsed_time", "waited_too_long", "buffer_too_long"]
                 print('\n'.join(["{}\t{}".format(k, locals()[k]) for k in info_keys]))
