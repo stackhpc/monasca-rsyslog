@@ -14,7 +14,6 @@
 
 from keystoneauth1 import plugin
 from keystoneauth1 import loading as ks_loading
-from keystoneauth1.exceptions.connection import ConnectFailure
 from oslo_serialization import jsonutils
 from oslo_config import cfg
 import time
@@ -95,6 +94,7 @@ class Client(object):
                 sys.stdout.flush()
                 while True:
                     try:
+                        # Try to post the things in the buffer
                         self._sess.post(
                             '/logs',
                             endpoint_override=self._url,
@@ -102,13 +102,17 @@ class Client(object):
                             data=jsonutils.dumps(log_buffer)
                         )
                         break
-                    except ConnectionFailure:
+                    except Exception as e:
+                        # If there is a failure, most likely ConnectionFailure,
+                        # write to stdout and stderr then try again.
                         print("Connection failure, trying again.")
                         sys.stdout.flush()
+                        sys.stderr.write(e)
+                        sys.stderr.flush()
                         time.sleep(1)
-                # Do not sleep if we wrrived here because of a full buffer.
-                # This ensures that during periods of high volume, the buffer does
-                # not continuously build up due to unnecessary throttling of activity.
+                # Do not fall asleep if we arrived here because of a full buffer.
+                # This ensures that during periods of high activity, the buffer does
+                # not continuously build up due to undesired naps.
                 if not buffer_too_long: 
                     # Sleep for max interval allowing for processing time
                     time.sleep(self._max_poll_interval)
