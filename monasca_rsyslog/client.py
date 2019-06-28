@@ -118,6 +118,12 @@ class Client(object):
                 # things waiting to be flushed but no input for timeout duration.
                 yield None
 
+    def _print_summary(self, **kwargs):
+        """ Print a summary of arbitrary number of states. """
+        if self._verbosity > 0:
+            print(',\t'.join(["{}\t{}".format(k, v) for k, v in kwargs.items()]))
+            sys.stdout.flush()
+
     def handle_logs(self, log_source=sys.stdin):
         """ Post logs to Monasca which are suitably pre-encoded as JSON. """
 
@@ -132,10 +138,8 @@ class Client(object):
             buffer_too_long = log_count > self._max_batch_size
             if (waited_too_long or buffer_too_long) and log_count > 0:
                 # Print a summary of states
-                if self._verbosity > 0:
-                    info_keys = ["log_count", "elapsed_time", "waited_too_long", "buffer_too_long"]
-                    print('\t'.join(["{}\t{}".format(k, locals()[k]) for k in info_keys]))
-                    sys.stdout.flush()
+		self._print_summary(log_count=log_count, elapsed_time=elapsed_time,
+                    waited_too_long=waited_too_long, buffer_too_long=buffer_too_long)
                 # Try to post everything in the buffer until success
                 self._retry_post_logs(log_buffer)
                 # Reset the variables
