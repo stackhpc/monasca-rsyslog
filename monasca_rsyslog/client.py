@@ -29,6 +29,18 @@ ks_loading.conf.register_conf_options(cfg.CONF, AUTH_CFG_GROUP)
 ks_loading.register_session_conf_options(cfg.CONF, AUTH_CFG_GROUP)
 
 cfg.CONF.register_opts([
+    cfg.StrOpt('region_name',
+               default=None,
+               help='Name of loggin region'),
+    cfg.StrOpt('service_type',
+               default=None,
+               help='Name of logging service type'),
+    cfg.StrOpt('endpoint_type',
+               default=None,
+               help='Name of loggin endpoint type'),
+], cfg.OptGroup(name=AUTH_CFG_GROUP, title=AUTH_CFG_GROUP))
+
+cfg.CONF.register_opts([
     cfg.StrOpt('url',
                default=None,
                help='Specify URL for the logging API'),
@@ -60,10 +72,26 @@ class Client(object):
             auth=auth_plugin,
             user_agent='rsyslog-monasca'
         )
-        self._url = cfg.CONF.api.url
+        self._url = self._get_monasca_log_api_url()
         self._verbosity = cfg.CONF.api.verbosity
         self._min_poll_delay = cfg.CONF.api.min_poll_delay
         self._max_batch_size = cfg.CONF.api.max_batch_size
+
+    def _get_monasca_log_api_url(self, version='/v3.0'):
+        """ Retrieves monasca log api endpoint. """
+
+        endpoint = cfg.CONF.api.url
+        if not endpoint:
+            args = {
+                'service_type': cfg.CONF.auth.service_type,
+                'interface': cfg.CONF.auth.endpoint_type,
+                'region_name': cfg.CONF.auth.region_name  # that one has no default
+            }
+            catalog = self._sess.auth.get_auth_ref(self._sess).service_catalog
+            endpoint = catalog.url_for(**args)
+        if not endpoint.endswith(version):
+            endpoint += version
+        return endpoint
 
     def _combine_logs(self, data, log_buffer):
         """ Combine with the existing log buffer if not empty. """
