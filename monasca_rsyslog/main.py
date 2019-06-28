@@ -23,30 +23,14 @@ import sys
 sys.stdout = open(STDOUT_FILE, 'a')
 sys.stderr = open(STDERR_FILE, 'a')
 
-print('Started')
-sys.stdout.flush()
-
 from client import Client
 
-def stdin_by_line():
-    """Helper for performing line-by-line reads of stdin."""
-    
-    while True:
-        line = sys.stdin.readline()
-        if line:
-            yield line
-        else:
-            return
-
 def main():
-    client = Client()
-    echo = False
+    print('Started')
+    sys.stdout.flush()
 
-    for line in stdin_by_line():
-        if echo:
-            sys.stdout.write(line)
-            sys.stdout.flush()
-        client.post_logs(line)
+    client = Client()
+    client.handle_logs(log_source=sys.stdin)
 
     print('Exiting')
     sys.stdout.flush()
