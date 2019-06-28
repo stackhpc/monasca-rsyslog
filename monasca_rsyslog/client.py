@@ -63,7 +63,7 @@ class Client(object):
         self._min_poll_delay = cfg.CONF.api.min_poll_delay
         self._max_batch_size = cfg.CONF.api.max_batch_size
 
-    def combine_logs(self, data, log_buffer):
+    def _combine_logs(self, data, log_buffer):
         """ Combine with the existing log buffer if not empty. """
 
         log_count = 0
@@ -80,7 +80,7 @@ class Client(object):
                 sys.stdout.flush()
         return log_count
 
-    def retry_post_logs(self, log_buffer):
+    def _retry_post_logs(self, log_buffer):
         """ Try to post logs forever until success. """
 
         while True:
@@ -110,7 +110,7 @@ class Client(object):
 
         # Iterate through the stdin function
         for data in stdin_fn(poll_interval=self._min_poll_delay):
-            log_count += self.combine_logs(data, log_buffer)
+            log_count += self._combine_logs(data, log_buffer)
             elapsed_time = time.time() - start_time
             waited_too_long = elapsed_time > self._min_poll_delay
             buffer_too_long = log_count > self._max_batch_size
@@ -120,6 +120,6 @@ class Client(object):
                 print('\t'.join(["{}\t{}".format(k, locals()[k]) for k in info_keys]))
                 sys.stdout.flush()
                 # Try to post everything in the buffer until success
-                self.retry_post_logs(log_buffer)
+                self._retry_post_logs(log_buffer)
                 # Reset the variables
                 log_count, log_buffer, start_time = 0, {}, time.time()
