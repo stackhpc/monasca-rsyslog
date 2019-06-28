@@ -37,9 +37,9 @@ cfg.CONF.register_opts([
     cfg.IntOpt('min_poll_delay',
                default=10,
                help='Specify minimum time to wait between triggering a post'),
-    cfg.BoolOpt('verbose',
-               default=False,
-               help='Specify whether to print output'),
+    cfg.IntOpt('verbosity',
+               default=0,
+               help='Specify the level of verbosity to print output at'),
 ], cfg.OptGroup(name=API_CFG_GROUP, title=API_CFG_GROUP))
 
 cfg.CONF(default_config_files=[DEFAULT_CONFIG])
@@ -59,7 +59,7 @@ class Client(object):
             user_agent='rsyslog-monasca'
         )
         self._url = cfg.CONF.api.url
-        self._verbose = cfg.CONF.api.verbose
+        self._verbosity = cfg.CONF.api.verbosity
         self._min_poll_delay = cfg.CONF.api.min_poll_delay
         self._max_batch_size = cfg.CONF.api.max_batch_size
 
@@ -68,14 +68,14 @@ class Client(object):
 
         log_count = 0
         if data != None:
-            if self._verbose:
+            if self._verbosity > 1:
                 print(data)
                 sys.stdout.flush()
             for key, value in jsonutils.loads(data).items():
                 log_buffer.setdefault(key, []).extend(value)
                 log_count += len(value)
         else:
-            if self._verbose:
+            if self._verbosity > 1:
                 print("No input from stdin for {} seconds.".format(self._min_poll_delay))
                 sys.stdout.flush()
         return log_count
@@ -96,8 +96,7 @@ class Client(object):
             except Exception as e:
                 # If there is a failure, most likely ConnectionFailure,
                 # write to stdout and stderr then try again.
-                print("Connection failure, trying again.")
-                sys.stdout.flush()
+                sys.stderr.write("Connection failure, trying again.")
                 sys.stderr.write(e)
                 sys.stderr.flush()
                 time.sleep(1)
@@ -116,9 +115,10 @@ class Client(object):
             buffer_too_long = log_count > self._max_batch_size
             if (waited_too_long or buffer_too_long) and log_count > 0:
                 # Print a summary of states
-                info_keys = ["log_count", "elapsed_time", "waited_too_long", "buffer_too_long"]
-                print('\t'.join(["{}\t{}".format(k, locals()[k]) for k in info_keys]))
-                sys.stdout.flush()
+                if self._verbosity > 0:
+                    info_keys = ["log_count", "elapsed_time", "waited_too_long", "buffer_too_long"]
+                    print('\t'.join(["{}\t{}".format(k, locals()[k]) for k in info_keys]))
+                    sys.stdout.flush()
                 # Try to post everything in the buffer until success
                 self._retry_post_logs(log_buffer)
                 # Reset the variables
