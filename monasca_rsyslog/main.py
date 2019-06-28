@@ -24,30 +24,13 @@ sys.stdout = open(STDOUT_FILE, 'a')
 sys.stderr = open(STDERR_FILE, 'a')
 
 from client import Client
-from select import select
-
-def stdin_by_line(poll_interval):
-    """ Helper for performing line-by-line reads of stdin. """
-
-    while True:
-        buffer_is_not_empty, _, _ = select([sys.stdin], [], [], poll_interval)
-        if buffer_is_not_empty:
-            line = sys.stdin.readline()
-            if line:
-                yield line
-            else:
-                return
-        else:
-            # Waiting for stdin buffer timed out, yeild in case there are
-            # things waiting to be flushed but no input for timeout duration.
-            yield None
 
 def main():
     print('Started')
     sys.stdout.flush()
 
     client = Client()
-    client.handle_logs(stdin_fn=stdin_by_line)
+    client.handle_logs(log_source=sys.stdin)
 
     print('Exiting')
     sys.stdout.flush()

@@ -16,6 +16,7 @@ from keystoneauth1 import plugin
 from keystoneauth1 import loading as ks_loading
 from oslo_serialization import jsonutils
 from oslo_config import cfg
+from select import select
 import time
 import sys
 
@@ -101,14 +102,30 @@ class Client(object):
                 sys.stderr.flush()
                 time.sleep(1)
 
-    def handle_logs(self, stdin_fn):
+    def _log_generator(self, log_source, poll_interval):
+        """ Helper for performing line-by-line reads of input source. """
+
+        while True:
+            buffer_is_not_empty, _, _ = select([log_source], [], [], poll_interval)
+            if buffer_is_not_empty:
+                line = log_source.readline()
+                if line:
+                    yield line
+                else:
+                    return
+            else:
+                # Waiting for stdin buffer timed out, yeild in case there are
+                # things waiting to be flushed but no input for timeout duration.
+                yield None
+
+    def handle_logs(self, log_source=sys.stdin):
         """ Post logs to Monasca which are suitably pre-encoded as JSON. """
 
-        # Reset the variables
+        # Initialise the variables
         log_count, log_buffer, start_time = 0, {}, time.time()
 
         # Iterate through the stdin function
-        for data in stdin_fn(poll_interval=self._min_poll_delay):
+        for data in self._log_generator(log_source=log_source, poll_interval=self._min_poll_delay):
             log_count += self._combine_logs(data, log_buffer)
             elapsed_time = time.time() - start_time
             waited_too_long = elapsed_time > self._min_poll_delay
