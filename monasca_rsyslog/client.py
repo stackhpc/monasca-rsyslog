@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from __future__ import print_function
 from keystoneauth1 import plugin
 from keystoneauth1 import loading as ks_loading
 from oslo_serialization import jsonutils
@@ -97,8 +98,7 @@ class Client(object):
             except Exception as e:
                 # If there is a failure, most likely ConnectionFailure,
                 # write to stdout and stderr then try again.
-                sys.stderr.write("Connection failure, trying again.")
-                sys.stderr.write(e)
+                print(e, file=sys.stderr)
                 sys.stderr.flush()
                 time.sleep(1)
 
