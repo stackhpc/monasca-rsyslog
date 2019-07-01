@@ -88,11 +88,20 @@ class Client(object):
                 interface=cfg.CONF.auth.endpoint_type,
                 region_name=cfg.CONF.auth.region_name,
             )
-            for item in jsonutils.loads(self._sess.get(endpoint)).get('elements'):
-                if item.get('status') == 'CURRENT':
-                    for link in item.get('links'):
-                        if link.get('rel') == 'logs':
-                            url = link.get('href')
+            response = self._sess.get(endpoint)
+            if int(response.status_code) = 200:
+                for item in jsonutils.loads(response.text).get('elements'):
+                    if item.get('status') == 'CURRENT':
+                        for link in item.get('links'):
+                            if link.get('rel') == 'logs':
+                                url = link.get('href')
+            if url:
+                # NOTE (brtknr): workaround for a bug where the returned url is
+                # invalid because of missing `//`. See the story for details:
+                # https://storyboard.openstack.org/#!/story/2006147
+                left, middle, right = url.partition(':')
+                if not right.startswith('//'):
+                    url = ''.join((left, middle, '//', right))
         if self._verbosity > 0:
             print('Using log api url: {}'.format(url))
         return url
