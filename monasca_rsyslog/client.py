@@ -77,20 +77,25 @@ class Client(object):
         self._min_poll_delay = cfg.CONF.api.min_poll_delay
         self._max_batch_size = cfg.CONF.api.max_batch_size
 
-    def _get_monasca_log_api_url(self, version='v3.0'):
+    def _get_monasca_log_api_url(self):
         """ Retrieves monasca log api endpoint. """
 
-        endpoint = cfg.CONF.api.url
-        if not endpoint:
+        url = cfg.CONF.api.url
+        if not url:
             catalog = self._sess.auth.get_auth_ref(self._sess).service_catalog
             endpoint = catalog.url_for(
                 service_type=cfg.CONF.auth.service_type,
                 interface=cfg.CONF.auth.endpoint_type,
                 region_name=cfg.CONF.auth.region_name,
             )
-        if not endpoint.endswith(version):
-            endpoint += '/' + version
-        return endpoint
+            for item in jsonutils.loads(self._sess.get(endpoint)).get('elements'):
+                if item.get('status') == 'CURRENT':
+                    for link in item.get('links'):
+                        if link.get('rel') == 'logs':
+                            url = link.get('href')
+        if self._verbosity > 0:
+            print('Using log api url: {}'.format(url))
+        return url
 
     def _combine_logs(self, data, log_buffer):
         """ Combine with the existing log buffer if not empty. """
@@ -116,7 +121,7 @@ class Client(object):
             try:
                 # Try to post the things in the buffer
                 self._sess.post(
-                    '/logs',
+                    '/',
                     endpoint_override=self._url,
                     headers={ 'Content-Type': 'application/json' },
                     data=jsonutils.dumps(log_buffer)
