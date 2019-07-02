@@ -95,13 +95,13 @@ class Client(object):
                         for link in item.get('links'):
                             if link.get('rel') == 'logs':
                                 url = link.get('href')
-            if url:
-                # NOTE (brtknr): workaround for a bug where the returned url is
-                # invalid because of missing `//`. See the story for details:
-                # https://storyboard.openstack.org/#!/story/2006147
-                left, middle, right = url.partition(':')
-                if not right.startswith('//'):
-                    url = ''.join((left, middle, '//', right))
+            assert url != None
+            # NOTE (brtknr): workaround for a bug where the returned url is
+            # invalid because of missing `//`. See the story for details:
+            # https://storyboard.openstack.org/#!/story/2006147
+            left, middle, right = url.partition(':')
+            if not right.startswith('//'):
+                url = ''.join((left, middle, '//', right))
         if self._verbosity > 0:
             print('Using log api url: {}'.format(url))
         return url
