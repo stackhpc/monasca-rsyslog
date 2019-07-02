@@ -72,10 +72,10 @@ class Client(object):
             auth=auth_plugin,
             user_agent='rsyslog-monasca'
         )
-        self._url = self._get_monasca_log_api_url()
         self._verbosity = cfg.CONF.api.verbosity
         self._min_poll_delay = cfg.CONF.api.min_poll_delay
         self._max_batch_size = cfg.CONF.api.max_batch_size
+        self._url = self._get_monasca_log_api_url()
 
     def _get_monasca_log_api_url(self, version='v3.0'):
         """ Retrieves monasca log api endpoint. """
