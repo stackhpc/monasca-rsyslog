@@ -77,31 +77,28 @@ class Client(object):
         self._min_poll_delay = cfg.CONF.api.min_poll_delay
         self._max_batch_size = cfg.CONF.api.max_batch_size
 
-    def _get_monasca_log_api_url(self):
+    def _get_monasca_log_api_url(self, version='v3.0'):
         """ Retrieves monasca log api endpoint. """
 
         url = cfg.CONF.api.url
         if not url:
-            catalog = self._sess.auth.get_auth_ref(self._sess).service_catalog
-            endpoint = catalog.url_for(
-                service_type=cfg.CONF.auth.service_type,
-                interface=cfg.CONF.auth.endpoint_type,
-                region_name=cfg.CONF.auth.region_name,
+            response = self._sess.get('/version/{}'.format(version),
+                endpoint_filter=dict(
+                    service_type=cfg.CONF.auth.service_type,
+                    interface=cfg.CONF.auth.endpoint_type,
+                    region_name=cfg.CONF.auth.region_name,
+                )
             )
-            response = self._sess.get(endpoint)
-            if int(response.status_code) = 200:
-                for item in jsonutils.loads(response.text).get('elements'):
-                    if item.get('status') == 'CURRENT':
-                        for link in item.get('links'):
-                            if link.get('rel') == 'logs':
-                                url = link.get('href')
+            if response.status_code == 200:
+                item = jsonutils.loads(response.text).get('elements').pop()
+                url = item.get('links').pop().get('href')
+                # NOTE (brtknr): workaround for a bug where the returned url is
+                # invalid because of missing `//`. See the story for details:
+                # https://storyboard.openstack.org/#!/story/2006147
+                left, middle, right = url.partition(':')
+                if not right.startswith('//'):
+                    url = ''.join((left, middle, '//', right))
             assert url != None
-            # NOTE (brtknr): workaround for a bug where the returned url is
-            # invalid because of missing `//`. See the story for details:
-            # https://storyboard.openstack.org/#!/story/2006147
-            left, middle, right = url.partition(':')
-            if not right.startswith('//'):
-                url = ''.join((left, middle, '//', right))
         if self._verbosity > 0:
             print('Using log api url: {}'.format(url))
         return url
