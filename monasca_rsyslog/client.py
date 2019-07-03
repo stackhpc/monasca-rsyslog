@@ -72,25 +72,36 @@ class Client(object):
             auth=auth_plugin,
             user_agent='rsyslog-monasca'
         )
-        self._url = self._get_monasca_log_api_url()
         self._verbosity = cfg.CONF.api.verbosity
         self._min_poll_delay = cfg.CONF.api.min_poll_delay
         self._max_batch_size = cfg.CONF.api.max_batch_size
+        self._url = self._get_monasca_log_api_url()
 
     def _get_monasca_log_api_url(self, version='v3.0'):
         """ Retrieves monasca log api endpoint. """
 
-        endpoint = cfg.CONF.api.url
-        if not endpoint:
-            catalog = self._sess.auth.get_auth_ref(self._sess).service_catalog
-            endpoint = catalog.url_for(
-                service_type=cfg.CONF.auth.service_type,
-                interface=cfg.CONF.auth.endpoint_type,
-                region_name=cfg.CONF.auth.region_name,
+        url = cfg.CONF.api.url
+        if not url:
+            response = self._sess.get('/version/{}'.format(version),
+                endpoint_filter=dict(
+                    service_type=cfg.CONF.auth.service_type,
+                    interface=cfg.CONF.auth.endpoint_type,
+                    region_name=cfg.CONF.auth.region_name,
+                )
             )
-        if not endpoint.endswith(version):
-            endpoint += '/' + version
-        return endpoint
+            if response.status_code == 200:
+                item = jsonutils.loads(response.text).get('elements').pop()
+                url = item.get('links').pop().get('href')
+                # NOTE (brtknr): workaround for a bug where the returned url is
+                # invalid because of missing `//`. See the story for details:
+                # https://storyboard.openstack.org/#!/story/2006147
+                left, middle, right = url.partition(':')
+                if not right.startswith('//'):
+                    url = ''.join((left, middle, '//', right))
+            assert url != None
+        if self._verbosity > 0:
+            print('Using log api url: {}'.format(url))
+        return url
 
     def _combine_logs(self, data, log_buffer):
         """ Combine with the existing log buffer if not empty. """
@@ -116,7 +127,7 @@ class Client(object):
             try:
                 # Try to post the things in the buffer
                 self._sess.post(
-                    '/logs',
+                    '/',
                     endpoint_override=self._url,
                     headers={ 'Content-Type': 'application/json' },
                     data=jsonutils.dumps(log_buffer)
